@@ -1,59 +1,88 @@
-import katex from 'katex'
+import katex, { StrictFunction } from 'katex';
 
-const defaultOptions = {
+// Define reusable types
+type Delimiter = {
+  left: string;
+  right: string;
+  display: boolean;
+};
+
+type KatexOptions = {
+  delimiters: Delimiter[];
+  strict?: boolean | 'ignore' | 'warn' | 'error' | StrictFunction;
+};
+
+type MarkdownState = any; // Replace with a more specific type if available
+type MarkdownInlineRuler = {
+  after: (arg0: string, arg1: string, arg2: (state: MarkdownState, silent: boolean) => boolean) => void;
+};
+
+type MarkdownInline = {
+  ruler: MarkdownInlineRuler;
+};
+
+type MarkdownParser = {
+  inline: MarkdownInline;
+};
+
+// Default options
+const defaultOptions: KatexOptions = {
   delimiters: [
-    { left: '\\[', right: '\\]', display: true },
-    { left: '\\(', right: '\\)', display: false }
-  ]
-}
+    { left: '\\[', right: '\\]', display: true }, // Display mode for block equations
+    { left: '\\(', right: '\\)', display: false }, // Inline mode for inline equations
+  ],
+  strict: 'ignore', // Add the default strict parameter
+};
 
-function escapedBracketRule(options) {
-  return (state, silent) => {
-    const max = state.posMax
-    const start = state.pos
+// Rule function to handle escaped brackets
+function escapedBracketRule(options: KatexOptions) {
+  return (state: MarkdownState, silent: boolean) => {
+    const max: number = state.posMax;
+    const start: number = state.pos;
 
     for (const { left, right, display } of options.delimiters) {
+      // Check if the text starts with the left delimiter
+      if (!state.src.slice(start).startsWith(left)) continue;
 
-      // 检查是否以左标记开始
-      if (!state.src.slice(start).startsWith(left)) continue
+      // Skip the length of the left delimiter
+      let pos: number = start + left.length;
 
-      // 跳过左标记的长度
-      let pos = start + left.length
-
-      // 寻找匹配的右标记
+      // Find the matching right delimiter
       while (pos < max) {
         if (state.src.slice(pos).startsWith(right)) {
-          break
+          break;
         }
-        pos++
+        pos++;
       }
 
-      // 没找到匹配的右标记，跳过，进入下个匹配
-      if (pos >= max) continue
+      // If no matching right delimiter is found, skip and continue to the next match
+      if (pos >= max) continue;
 
-      // 如果不是静默模式，将 LaTeX 公式转换为 MathML
+      // If not in silent mode, convert the LaTeX formula to MathML
       if (!silent) {
-        const content = state.src.slice(start + left.length, pos)
+        const content: string = state.src.slice(start + left.length, pos);
         try {
-          const renderedContent = katex.renderToString(content, {
+          const renderedContent: string = katex.renderToString(content, {
             throwOnError: false,
             output: 'mathml',
-            displayMode: display
-          })
-          const token = state.push('html_inline', '', 0)
-          token.content = renderedContent
+            displayMode: display,
+            strict: options.strict, // Pass the strict parameter
+          });
+          const token: any = state.push('html_inline', '', 0);
+          token.content = renderedContent;
         } catch (e) {
-          console.error(e)
+          console.error(e);
         }
       }
 
-      // 更新位置，跳过右标记的长度
-      state.pos = pos + right.length
-      return true
+      // Update the position, skipping the length of the right delimiter
+      state.pos = pos + right.length;
+      return true;
     }
-  }
+  };
 }
 
-export default function (md, options = defaultOptions) {
-  md.inline.ruler.after('text', 'escaped_bracket', escapedBracketRule(options))
+// Plugin function to add the rule to the markdown parser
+export default function (md: MarkdownParser, options: KatexOptions = defaultOptions) {
+  md.inline.ruler.after('text', 'escaped_bracket', escapedBracketRule(options));
 }
